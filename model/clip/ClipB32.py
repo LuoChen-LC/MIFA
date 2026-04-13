@@ -1,0 +1,95 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import transforms
+from transformers import CLIPVisionModelWithProjection
+from .Base import BaseFeatureExtractor
+
+
+class ClipB32FeatureExtractor(BaseFeatureExtractor):
+    def __init__(self):
+        super(ClipB32FeatureExtractor, self).__init__()
+        
+        self.model = CLIPVisionModelWithProjection.from_pretrained(
+            "openai/clip-vit-base-patch32",
+            output_hidden_states=True  
+        )
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
+            
+        self.normalizer = transforms.Compose([
+            transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+            transforms.Lambda(lambda img: torch.clamp(img, 0.0, 255.0) / 255.0),
+            transforms.CenterCrop(224),
+            transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ])
+
+    def forward(self, x):
+        x_norm = self.normalizer(x)
+        vision_outputs = self.model.vision_model(
+            pixel_values=x_norm, 
+            output_hidden_states=True,
+            return_dict=True
+        )
+        hidden_states = vision_outputs.hidden_states 
+        pooled_output = vision_outputs.pooler_output
+        global_features = self.model.visual_projection(pooled_output)
+        global_features = F.normalize(global_features, p=2, dim=-1)
+
+        return global_features, hidden_states
+    
+class FineGrainedCLIPLoss(nn.Module):
+    def __init__(self, 
+                 use_global=True, 
+                 use_intermediate=True, 
+                 use_spatial_mask=True, 
+                 target_layers=[3, 6, 9], 
+                 lambda_fg=5.0):
+        super(FineGrainedCLIPLoss, self).__init__()
+        self.use_global = use_global
+        self.use_intermediate = use_intermediate
+        self.use_spatial_mask = use_spatial_mask
+        self.target_layers = target_layers
+        self.lambda_fg = lambda_fg
+
+        if self.use_spatial_mask:
+            self.register_buffer("spatial_mask", self._create_prior_face_mask())
+
+    def _create_prior_face_mask(self):
+        """创建一个 7x7 (49个Token) 的面部空间先验掩码"""
+        mask = torch.zeros((7, 7), dtype=torch.float32)
+        mask[2:5, 2:5] = 1.0  
+        mask[2:4, 1:6] = 0.8  
+        mask[5, 2:5] = 0.6    
+        return mask.view(-1)
+
+    def forward(self, target_global, target_inter_states, adv_global, adv_inter_states):
+        total_loss = 0.0
+        if self.use_global:
+            loss_global = -F.cosine_similarity(target_global, adv_global, dim=-1).mean()
+            total_loss += loss_global
+        if self.use_intermediate:
+            loss_fine_grained = 0.0
+            
+            for layer_idx in self.target_layers:
+                target_patches = target_inter_states[layer_idx][:, 1:, :] 
+                adv_patches = adv_inter_states[layer_idx][:, 1:, :]
+
+                target_patches = F.normalize(target_patches, p=2, dim=-1)
+                adv_patches = F.normalize(adv_patches, p=2, dim=-1)
+
+                sim = F.cosine_similarity(adv_patches, target_patches, dim=-1)
+
+                if self.use_spatial_mask:
+                    mask_weight = self.spatial_mask.unsqueeze(0)
+                    sim = sim * mask_weight
+                    layer_sim = sim.sum(dim=-1) / self.spatial_mask.sum()
+                else:
+                    layer_sim = sim.mean(dim=-1)
+                
+                loss_fine_grained -= layer_sim.mean() 
+            
+            total_loss += self.lambda_fg * loss_fine_grained
+
+        return total_loss

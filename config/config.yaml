@@ -1,0 +1,19 @@
+data:
+  dataset: "CelebA-HQ" #LFW, CelebA-HQ
+  batch_size: 1
+  num_samples: 1
+  output: "./output"
+
+model:
+  device: "cuda:0"
+  input_size: 112
+  use_global: True
+  use_intermediate: True
+  use_spatial_mask: True
+
+optim:
+  alpha: 1.0
+  epsilon: 16
+  steps: 100
+
+  
