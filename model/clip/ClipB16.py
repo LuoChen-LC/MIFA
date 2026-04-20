@@ -57,7 +57,7 @@ class FineGrainedCLIPLoss(nn.Module):
         if self.use_spatial_mask:
             self.register_buffer("spatial_mask", self._create_prior_face_mask())
 
-    def _create_pixel_face_mask(self, H=112, W=112):
+    def _create_pixel_face_mask(self, H=224, W=224):
         mask = torch.zeros((H, W), dtype=torch.float32)
 
         h_start, h_end = int(H * 0.3), int(H * 0.7)
@@ -65,7 +65,7 @@ class FineGrainedCLIPLoss(nn.Module):
         mask[h_start:h_end, w_start:w_end] = 1.0
 
         return mask
-    def _create_prior_face_mask(self, H=112, W=112, patch_size=16):
+    def _create_prior_face_mask(self, H=224, W=224, patch_size=16):
         pixel_mask = self._create_pixel_face_mask(H, W)  
         pixel_mask = pixel_mask.unsqueeze(0).unsqueeze(0)  
 
