@@ -56,13 +56,25 @@ class FineGrainedCLIPLoss(nn.Module):
         if self.use_spatial_mask:
             self.register_buffer("spatial_mask", self._create_prior_face_mask())
 
-    def _create_prior_face_mask(self):
-        """创建一个 7x7 (49个Token) 的面部空间先验掩码"""
-        mask = torch.zeros((7, 7), dtype=torch.float32)
-        mask[2:5, 2:5] = 1.0  
-        mask[2:4, 1:6] = 0.8  
-        mask[5, 2:5] = 0.6    
-        return mask.view(-1)
+    def _create_pixel_face_mask(self, H=112, W=112):
+        mask = torch.zeros((H, W), dtype=torch.float32)
+
+        h_start, h_end = int(H * 0.3), int(H * 0.7)
+        w_start, w_end = int(W * 0.3), int(W * 0.7)
+        mask[h_start:h_end, w_start:w_end] = 1.0
+
+        return mask
+    def _create_prior_face_mask(self, H=112, W=112, patch_size=32):
+        pixel_mask = self._create_pixel_face_mask(H, W)  
+        pixel_mask = pixel_mask.unsqueeze(0).unsqueeze(0)  
+
+        pooled = F.avg_pool2d(
+            pixel_mask,
+            kernel_size=patch_size,
+            stride=patch_size
+        )
+
+        return pooled.view(-1)
 
     def forward(self, target_global, target_inter_states, adv_global, adv_inter_states):
         total_loss = 0.0
