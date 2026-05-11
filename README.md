@@ -12,3 +12,10 @@ Place images into `Dataset/CelebA-HQ/` and prepare images pair list as `.csv` fi
 ~~~python
 python attack.py
 ~~~
+
+## Acknowledgements
+This project is based on the following open-source projects. We thank their
+authors for making the source code publically available.
+
+* [Face_Pytorch](https://github.com/wujiyang/Face_Pytorch)
+* [FaceX-Zoo](https://github.com/JDAI-CV/FaceX-Zoo)
