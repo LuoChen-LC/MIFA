@@ -8,7 +8,7 @@ pip install -r requirements.txt
 ## Quick Start
 ### Data Preparation
 Place images into `Dataset/CelebA-HQ/` and prepare images pair list as `.csv` file. Modify the `config/config.yaml` and `util/dataset.py`. 
-### Atack
+### Attack
 ~~~python
 python attack.py
 ~~~
